@@ -10,7 +10,7 @@ const BATCH_SIZE = Number(process.env.BATCH_SIZE || 250);
 const BATCH_INDEX = Number(process.env.BATCH_INDEX || 0);
 const MODE = String(process.env.MODE || 'both');
 
-// ✅ Minimum age of the carrier in days (6 months ≈ 180 days)
+// ✅ کیریئر کی کم از کم عمر دنوں میں (6 مہینے ≈ 180 دن)
 const MIN_AGE_DAYS = 180;
 
 const EXTRACT_TIMEOUT_MS = 45000;
@@ -27,7 +27,7 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 function mcToSnapshotUrl(mc) {
   const m = String(mc || '').replace(/\s+/g, '');
-  return `https://safer.fmcsa.dot.gov/query.asp?searchtype=ANY&query_type=queryCarrierSnapshot&query_param=MC_MX&query_string=${encodeURIComponent(m )}`;
+  return `https://safer.fmcsa.dot.gov/query.asp?searchtype=ANY&query_type=queryCarrierSnapshot&query_param=MC_MX&query_string=${encodeURIComponent(m)}`;
 }
 
 function absoluteUrl(base, href) {
@@ -55,11 +55,11 @@ async function fetchRetry(url, tries = MAX_RETRIES, timeout = FETCH_TIMEOUT_MS, 
     } catch (err) {
       lastErr = err;
       const backoff = BACKOFF_BASE_MS * Math.pow(2, i);
-      console.log(`[${now()}] ${label} attempt ${i + 1}/${tries} failed → ${err?.message}. Backoff ${backoff}ms`);
+      console.log(`[${now()}] ${label} کوشش ${i + 1}/${tries} ناکام → ${err?.message}. ${backoff}ms انتظار`);
       await sleep(backoff);
     }
   }
-  throw lastErr || new Error(`${label} failed after ${tries} attempts`);
+  throw lastErr || new Error(`${label} ${tries} کوششوں کے بعد ناکام`);
 }
 
 function htmlToText(s) {
@@ -75,7 +75,7 @@ function htmlToText(s) {
 }
 
 function extractDataByHeader(html, headerText) {
-    const regex = new RegExp(`>${headerText}<\\/a><\\/th>\\s*<td[^>]*>([\\s\\S]*?)<\\/td>`, 'i');
+    const regex = new RegExp(`>${headerText}</a></th>\\s*<td[^>]*>([\\s\\S]*?)</td>`, 'i');
     const match = html.match(regex);
     if (match && match[1]) {
         return htmlToText(match[1]);
@@ -106,7 +106,6 @@ function getXMarkedItems(html) {
     return [...new Set(items)];
 }
 
-
 async function extractAllData(url, html) {
     const entityType = extractDataByHeader(html, 'Entity Type:');
     const legalName = extractDataByHeader(html, 'Legal Name:');
@@ -127,7 +126,6 @@ async function extractAllData(url, html) {
     let phone = extractDataByHeader(html, 'Phone:');
     let email = '';
 
-    // ✅✅✅ CORRECTED: Email deep-fetch logic is now included ✅✅✅
     const smsLinkMatch = html.match(/href=["']([^"']*(safer_xfr\.aspx|\/SMS\/)[^"']*)["']/i);
     if (smsLinkMatch && smsLinkMatch[1]) {
         const smsLink = absoluteUrl(url, smsLinkMatch[1]);
@@ -143,7 +141,7 @@ async function extractAllData(url, html) {
                 if (emailMatch) email = emailMatch[1];
             }
         } catch (e) {
-            console.log(`[${now()}] Deep fetch error for ${url}: ${e?.message}`);
+            console.log(`[${now()}] گہری تلاش میں خرابی ${url}: ${e?.message}`);
         }
     }
 
@@ -160,14 +158,12 @@ async function handleMC(mc) {
       return { valid: false };
     }
 
-    // Filter 1: Authorization Status
     const authStatusText = extractDataByHeader(html, 'Operating Authority Status:').toUpperCase();
     if (authStatusText.includes('NOT AUTHORIZED') || !authStatusText.includes('AUTHORIZED')) {
-        console.log(`[${now()}] SKIPPING (Not Authorized) MC ${mc}`);
+        console.log(`[${now()}] نظر انداز (مجاز نہیں) MC ${mc}`);
         return { valid: false };
     }
 
-    // Filter 2: Carrier Age (6+ months)
     const dateStr = extractDataByHeader(html, 'MCS-150 Form Date:');
     if (dateStr) {
         const formDate = new Date(dateStr);
@@ -175,44 +171,42 @@ async function handleMC(mc) {
         const diffTime = Math.abs(today - formDate);
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
         if (diffDays < MIN_AGE_DAYS) {
-            console.log(`[${now()}] SKIPPING (Newer than ${MIN_AGE_DAYS} days): ${diffDays} days for MC ${mc}`);
+            console.log(`[${now()}] نظر انداز (${MIN_AGE_DAYS} دن سے نیا): ${diffDays} دن MC ${mc} کے لیے`);
             return { valid: false };
         }
     } else {
-        console.log(`[${now()}] SKIPPING (MCS-150 Date not found) for MC ${mc}`);
+        console.log(`[${now()}] نظر انداز (MCS-150 تاریخ نہیں ملی) MC ${mc} کے لیے`);
         return { valid: false };
     }
 
-    // Filter 3: Power Units (min 1)
     const puText = extractDataByHeader(html, 'Power Units:');
     const powerUnits = Number(puText.replace(/,/g, ''));
     if (isNaN(powerUnits) || powerUnits < 1) {
-        console.log(`[${now()}] SKIPPING (PU < 1): ${puText || 'N/A'} units for MC ${mc}`);
+        console.log(`[${now()}] نظر انداز (PU < 1): ${puText || 'N/A'} یونٹس MC ${mc} کے لیے`);
         return { valid: false };
     }
 
-    // Filter 4: Drivers (min 1)
     const driverText = extractDataByHeader(html, 'Drivers:');
     const drivers = Number(driverText.replace(/,/g, ''));
     if (isNaN(drivers) || drivers < 1) {
-        console.log(`[${now()}] SKIPPING (Drivers < 1): ${driverText || 'N/A'} drivers for MC ${mc}`);
+        console.log(`[${now()}] نظر انداز (ڈرائیور < 1): ${driverText || 'N/A'} ڈرائیور MC ${mc} کے لیے`);
         return { valid: false };
     }
 
     if (MODE === 'urls') return { valid: true, url };
 
     const row = await extractAllData(url, html);
-    console.log(`[${now()}] SAVED → ${row.mcNumber || mc} | ${row.legalName || '(no name)'} | Email: ${row.email || 'N/A'}`);
+    console.log(`[${now()}] محفوظ کیا گیا → ${row.mcNumber || mc} | ${row.legalName || '(کوئی نام نہیں)'} | ای میل: ${row.email || 'N/A'}`);
     return { valid: true, url, row };
   } catch (err) {
-    console.log(`[${now()}] Fetch error MC ${mc} → ${err?.message}`);
+    console.log(`[${now()}] فیچ میں خرابی MC ${mc} → ${err?.message}`);
     return { valid: false };
   }
 }
 
 async function run() {
   if (!fs.existsSync(INPUT_FILE)) {
-    console.error('No input file found (batch.txt or mc_list.txt).');
+    console.error('کوئی ان پٹ فائل نہیں ملی (batch.txt or mc_list.txt)۔');
     process.exit(1);
   }
 
@@ -220,10 +214,10 @@ async function run() {
   const allMCs = raw.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
   const mcList = allMCs;
 
-  console.log(`[${now()}] Running batch index ${BATCH_INDEX} with ${mcList.length} MCs.`);
+  console.log(`[${now()}] بیچ انڈیکس ${BATCH_INDEX} کو ${mcList.length} MCs کے ساتھ چلایا جا رہا ہے۔`);
 
   if (mcList.length === 0) {
-    console.log(`[${now()}] No MCs in this batch. Exiting.`);
+    console.log(`[${now()}] اس بیچ میں کوئی MCs نہیں ہیں۔ باہر نکل رہا ہے۔`);
     return;
   }
 
@@ -232,7 +226,7 @@ async function run() {
 
   for (let i = 0; i < mcList.length; i += CONCURRENCY) {
     const slice = mcList.slice(i, i + CONCURRENCY);
-    console.log(`[${now()}] Processing slice ${i / CONCURRENCY + 1} (items ${i} to ${i + slice.length - 1})`);
+    console.log(`[${now()}] سلائس ${i / CONCURRENCY + 1} پر کارروائی ہو رہی ہے (آئٹمز ${i} سے ${i + slice.length - 1})`);
     const results = await Promise.all(slice.map(handleMC));
     for (const r of results) {
       if (r?.valid) {
@@ -251,19 +245,19 @@ async function run() {
       .concat(rows.map(r => headers.map(h => `"${String(r[h] || '').replace(/"/g, '""')}"`).join(',')))
       .join('\n');
     fs.writeFileSync(outCsv, csv);
-    console.log(`[${now()}] ✅ CSV written: ${outCsv} (rows=${rows.length})`);
+    console.log(`[${now()}] ✅ CSV لکھی گئی: ${outCsv} (قطاریں=${rows.length})`);
   } else {
-    console.log(`[${now()}] ⚠️ No data extracted for this batch.`);
+    console.log(`[${now()}] ⚠️ اس بیچ کے لیے کوئی ڈیٹا نہیں نکالا گیا۔`);
   }
 
   if (MODE === 'urls' && validUrls.length) {
     const listPath = path.join(OUTPUT_DIR, `fmcsa_remaining_urls_${BATCH_INDEX}_${Date.now()}.txt`);
     fs.writeFileSync(listPath, validUrls.join('\n'));
-    console.log(`[${now()}] Remaining URLs saved: ${listPath}`);
+    console.log(`[${now()}] باقی URLs محفوظ ہو گئے: ${listPath}`);
   }
 }
 
 run().catch(e => {
-  console.error('Fatal Error:', e);
+  console.error('مہلک خرابی:', e);
   process.exit(1);
 });
